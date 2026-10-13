@@ -11,14 +11,47 @@ TMDB(The Movie Database)에서 인기 영화 정보를 가져와 저장하고, �
 | Language | Java 17 |
 | Framework | Spring Boot 4.1, Spring Data JPA |
 | Database | MySQL |
-| 외부 API | TMDB API |
+| 외부 API | TMDB API (RestClient) |
+| 문서화 | Swagger (springdoc-openapi) |
+
+## 구조
+
+```
+Controller ─▶ Service ─▶ Repository ─▶ MySQL
+                 │
+                 └─▶ TMDB API
+```
+
+- `MovieService`가 TMDB 호출과 저장, 조회 로직을 담당하고, 컨트롤러는 요청과 응답만 다룹니다
+- 엔티티를 그대로 내보내지 않고 응답 전용 객체(`MovieResponse`)로 변환합니다
+- 존재하지 않는 영화를 조회하면 `GlobalExceptionHandler`가 404와 에러 메시지를 반환합니다
 
 ## API
 
 | Method | Endpoint | 설명 |
 |---|---|---|
-| GET | `/tmdb/save` | TMDB 인기 영화 목록을 가져와 DB에 저장 |
+| POST | `/tmdb/save` | TMDB 인기 영화를 가져와 저장. 이미 저장된 영화(TMDB ID 기준)는 건너뜀 |
 | GET | `/movies` | 저장된 영화 목록 조회 |
+| GET | `/movies?title={검색어}` | 제목에 검색어가 들어간 영화 조회 |
+| GET | `/movies/{id}` | 영화 상세 조회. 없으면 404 |
+
+서버 실행 후 `/swagger-ui/index.html`에서 API를 직접 호출해 볼 수 있습니다.
+
+### 응답 예시
+
+`POST /tmdb/save`
+
+```json
+{ "fetchedCount": 20, "savedCount": 20 }
+```
+
+같은 요청을 다시 보내면 이미 저장된 영화는 건너뛰어 `savedCount`가 0이 됩니다.
+
+`GET /movies/{id}` (없는 id)
+
+```json
+{ "status": 404, "message": "영화를 찾을 수 없습니다. id=999999" }
+```
 
 ## 실행 방법
 

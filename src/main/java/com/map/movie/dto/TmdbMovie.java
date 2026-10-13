@@ -7,6 +7,8 @@ import lombok.Setter;
 @Setter
 public class TmdbMovie {
 
+    private Long id;
+
     private String title;
 
     private String poster_path;

@@ -1,47 +1,23 @@
 package com.map.movie.controller;
 
-import com.map.movie.dto.TmdbMovie;
-import com.map.movie.dto.TmdbResponse;
-import com.map.movie.entity.Movie;
-import com.map.movie.repository.MovieRepository;
+import com.map.movie.dto.ImportResponse;
+import com.map.movie.service.MovieService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.client.RestTemplate;
 
+@Tag(name = "TMDB", description = "TMDB 영화 가져오기")
 @RestController
 @RequiredArgsConstructor
 public class TmdbController {
 
-    private final MovieRepository movieRepository;
+    private final MovieService movieService;
 
-    @Value("${tmdb.api-key}")
-    private String apiKey;
-
-    @GetMapping("/tmdb/save")
-    public String saveMovies() {
-
-        String url =
-                "https://api.themoviedb.org/3/movie/popular?language=ko-KR&page=1&api_key="
-                        + apiKey;
-
-        RestTemplate restTemplate = new RestTemplate();
-
-        TmdbResponse response =
-                restTemplate.getForObject(url, TmdbResponse.class);
-
-        for (TmdbMovie tmdbMovie : response.getResults()) {
-
-            Movie movie = new Movie();
-
-            movie.setTitle(tmdbMovie.getTitle());
-
-            movie.setPosterPath(tmdbMovie.getPoster_path());
-
-            movieRepository.save(movie);
-        }
-
-        return "저장 완료";
+    @Operation(summary = "인기 영화 가져오기", description = "TMDB 인기 영화를 가져와 저장합니다. 이미 저장된 영화는 건너뜁니다.")
+    @PostMapping("/tmdb/save")
+    public ImportResponse saveMovies() {
+        return movieService.importPopularMovies();
     }
 }
