@@ -2,7 +2,9 @@
 
 TMDB(The Movie Database)에서 인기 영화 정보를 가져와 저장하고, 저장된 영화 목록을 제공하는 Spring Boot REST API 서버입니다.
 
-컴퓨터공학과 학술 동아리 MAP의 방학 커리큘럼에서 부원들이 따라 만들 예제로 처음 제작했고, 이후 배포 환경까지 확장하고 있습니다.
+컴퓨터공학과 학술 동아리 MAP의 방학 커리큘럼에서 부원들이 따라 만들 예제로 처음 제작했고, 이후 기능 보강과 AWS 배포까지 확장했습니다.
+
+- API 문서 (Swagger): http://13.125.113.245:8080/swagger-ui/index.html
 
 ## 기술 스택
 
@@ -13,6 +15,35 @@ TMDB(The Movie Database)에서 인기 영화 정보를 가져와 저장하고, �
 | Database | MySQL |
 | 외부 API | TMDB API (RestClient) |
 | 문서화 | Swagger (springdoc-openapi) |
+| 배포 | AWS EC2 (Ubuntu), Docker, Docker Compose |
+
+## 배포 구성
+
+```
+          인터넷
+             │  :8080 (보안 그룹: 8080 전체 허용, SSH는 내 IP만)
+┌────────────▼──────────────── AWS EC2 (t3.micro) ┐
+│  Docker Compose                                  │
+│   ┌────────────┐      db:3306     ┌───────────┐ │
+│   │ movie-app  │ ───────────────▶ │ movie-db  │ │
+│   │ Spring Boot│                  │ MySQL 8.0 │ │
+│   └────────────┘                  └─────┬─────┘ │
+│                                   volume │       │
+└──────────────────────────────────────────┼───────┘
+                                    movie-db-data
+```
+
+- 서버에서 `git clone` 후 `.env`(DB 비밀번호, TMDB 키)를 직접 만들고 `docker compose up -d --build`로 실행합니다
+- MySQL 포트는 외부에 열지 않고, 앱 컨테이너만 내부 네트워크로 접속합니다
+- 메모리 1GB 인스턴스에서 Gradle 빌드가 가능하도록 2GB 스왑을 추가했습니다
+
+## 트러블슈팅
+
+| 문제 | 원인 | 해결 |
+|---|---|---|
+| EC2에 SSH 접속이 되지 않음 | 보안 그룹에 SSH(22) 인바운드 규칙이 빠져 있었음 | SSH 규칙을 추가하고 소스를 내 IP로 제한 |
+| EC2에서 Docker 빌드 시 `./gradlew: Permission denied` | Windows에서 커밋해 `gradlew`의 실행 권한이 저장되지 않음 | git에 실행 권한을 기록(`git update-index --chmod=+x`)하고 Dockerfile에서도 권한 부여 |
+| 같은 영화가 여러 번 저장됨 | 저장 시 중복 여부를 확인하지 않음 | TMDB 영화 ID를 유니크 컬럼으로 저장하고, 이미 있으면 건너뜀 |
 
 ## 구조
 
