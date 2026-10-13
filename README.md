@@ -79,3 +79,15 @@ TMDB_API_KEY=your_tmdb_api_key
 ```bash
 ./gradlew bootRun
 ```
+
+### Docker로 실행 (앱 + MySQL)
+
+로컬에 MySQL이 없어도 Docker만 있으면 실행할 수 있습니다. `.env`의 `DB_PASSWORD`, `TMDB_API_KEY`를 사용합니다.
+
+```bash
+docker compose up --build
+```
+
+- `Dockerfile`은 멀티 스테이지 빌드로 구성했습니다. JDK 이미지에서 jar를 만들고, 실행 이미지에는 JRE와 jar만 담습니다
+- 앱 컨테이너는 서비스 이름(`db`)으로 MySQL 컨테이너에 접속하고, MySQL이 준비된 뒤에 시작합니다 (healthcheck)
+- DB 데이터는 `movie-db-data` 볼륨에 저장되어 컨테이너를 다시 띄워도 유지됩니다
