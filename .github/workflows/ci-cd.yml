@@ -1,0 +1,126 @@
+# main에 push되면 테스트 → 이미지 빌드·업로드(GHCR) → EC2 배포
+# PR에서는 테스트(CI)만 실행
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  IMAGE: ghcr.io/komascode/movie-info-api
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    # @SpringBootTest가 실제 DB에 연결하므로 테스트용 MySQL 컨테이너를 함께 띄움
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: movie_db
+          MYSQL_ROOT_PASSWORD: test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -ptest"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      DB_URL: jdbc:mysql://localhost:3306/movie_db
+      DB_USERNAME: root
+      DB_PASSWORD: test
+      TMDB_API_KEY: dummy
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Test
+        run: chmod +x gradlew && ./gradlew test --no-daemon
+
+  build-push:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 빌드는 EC2(1GB)가 아니라 GitHub 러너에서 수행
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+
+  deploy:
+    needs: build-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # SSH는 평소 내 IP만 허용 → 배포하는 동안만 러너 IP를 보안 그룹에 추가
+      - name: Allow runner IP
+        run: |
+          RUNNER_IP=$(curl -s https://checkip.amazonaws.com)
+          echo "RUNNER_IP=$RUNNER_IP" >> $GITHUB_ENV
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ secrets.SG_ID }} \
+            --protocol tcp --port 22 --cidr "$RUNNER_IP/32"
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        env:
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: GHCR_USER,GHCR_TOKEN
+          script: |
+            set -e
+            cd ~/movie-info-api
+            git pull
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            docker compose pull app
+            docker compose up -d
+            docker logout ghcr.io
+            docker image prune -f
+
+      # 배포가 실패해도 러너 IP 규칙은 반드시 삭제
+      - name: Revoke runner IP
+        if: always()
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ secrets.SG_ID }} \
+            --protocol tcp --port 22 --cidr "${RUNNER_IP}/32" || true
