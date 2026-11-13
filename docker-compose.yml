@@ -16,6 +16,8 @@ services:
       retries: 20
 
   app:
+    # EC2: CI가 올린 이미지를 pull해서 실행 / 로컬: --build로 직접 빌드
+    image: ghcr.io/komascode/movie-info-api:latest
     build: .
     container_name: movie-app
     ports:

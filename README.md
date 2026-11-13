@@ -16,6 +16,7 @@ TMDB(The Movie Database)에서 인기 영화 정보를 가져와 저장하고, �
 | 외부 API | TMDB API (RestClient) |
 | 문서화 | Swagger (springdoc-openapi) |
 | 배포 | AWS EC2 (Ubuntu), Docker, Docker Compose |
+| CI/CD | GitHub Actions, GitHub Container Registry |
 
 ## 배포 구성
 
@@ -36,6 +37,36 @@ TMDB(The Movie Database)에서 인기 영화 정보를 가져와 저장하고, �
 - 서버에서 `git clone` 후 `.env`(DB 비밀번호, TMDB 키)를 직접 만들고 `docker compose up -d --build`로 실행합니다
 - MySQL 포트는 외부에 열지 않고, 앱 컨테이너만 내부 네트워크로 접속합니다
 - 메모리 1GB 인스턴스에서 Gradle 빌드가 가능하도록 2GB 스왑을 추가했습니다
+
+## CI/CD
+
+`main`에 push하면 GitHub Actions가 테스트부터 배포까지 자동으로 진행합니다. PR에서는 테스트만 실행합니다.
+
+```
+push (main)
+  │
+  ├─ test        : 테스트용 MySQL 컨테이너를 띄우고 ./gradlew test
+  │
+  ├─ build-push  : Docker 이미지 빌드 → ghcr.io/komascode/movie-info-api 에 업로드
+  │
+  └─ deploy      : ① 보안 그룹에 러너 IP를 SSH 허용으로 잠시 추가
+                   ② EC2에 SSH 접속 → docker compose pull && up -d (앱 컨테이너만 교체)
+                   ③ 성공·실패와 관계없이 러너 IP 규칙 삭제
+```
+
+- **빌드를 EC2에서 러너로 옮김**: 이전에는 1GB 서버에서 직접 Gradle 빌드를 해서 스왑이 필요했고, 실행 권한 문제로 빌드가 실패하기도 했습니다. 이제 EC2는 완성된 이미지를 받아 실행만 합니다
+- **SSH는 평소처럼 내 IP만 허용**: 러너 IP는 실행할 때마다 바뀌므로, 배포하는 동안에만 해당 IP를 허용하고 끝나면 삭제합니다. 이를 위한 IAM 사용자에는 보안 그룹 규칙 추가·삭제 권한만 부여했습니다
+- **DB는 그대로 유지**: 앱 컨테이너만 새 이미지로 교체되고, MySQL 컨테이너와 볼륨 데이터는 유지됩니다
+
+필요한 GitHub Secrets
+
+| 이름 | 내용 |
+|---|---|
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | 보안 그룹 규칙 추가·삭제 권한만 가진 IAM 사용자의 액세스 키 |
+| `AWS_REGION` | EC2 리전 (예: `ap-northeast-2`) |
+| `SG_ID` | EC2 보안 그룹 ID (`sg-...`) |
+| `EC2_HOST`, `EC2_USER` | EC2 공인 IP, 접속 사용자 (`ubuntu`) |
+| `EC2_SSH_KEY` | EC2 키 페어 `.pem` 파일 내용 |
 
 ## 트러블슈팅
 
