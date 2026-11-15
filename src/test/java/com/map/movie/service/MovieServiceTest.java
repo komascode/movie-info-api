@@ -46,7 +46,7 @@ class MovieServiceTest {
     @DisplayName("있는 id로 조회하면 영화 정보를 응답으로 변환해 돌려준다")
     void getMovie_found() {
         // given: 가짜 DB가 1번 영화를 돌려주도록 정해 둔다
-        Movie movie = new Movie(550L, "파이트 클럽", "/poster.jpg");
+        Movie movie = movie(550L, "파이트 클럽", "/poster.jpg");
         given(movieRepository.findById(1L)).willReturn(Optional.of(movie));
 
         // when
@@ -74,8 +74,8 @@ class MovieServiceTest {
     @DisplayName("제목 없이 조회하면 전체 영화 목록을 돌려준다")
     void getMovies_all() {
         // given: 가짜 DB가 전체 조회 시 영화 2편을 돌려주도록 정해 둔다
-        Movie movie1 = new Movie(550L, "파이트 클럽", "/a.jpg");
-        Movie movie2 = new Movie(680L, "펄프 픽션", "/b.jpg");
+        Movie movie1 = movie(550L, "파이트 클럽", "/a.jpg");
+        Movie movie2 = movie(680L, "펄프 픽션", "/b.jpg");
         given(movieRepository.findAll()).willReturn(List.of(movie1, movie2));
 
         // when: 제목 없이(null) 조회
@@ -91,7 +91,7 @@ class MovieServiceTest {
     @DisplayName("제목으로 조회하면 제목에 검색어가 들어간 영화만 돌려준다")
     void getMovies_byTitle() {
         // given: "클럽"으로 검색하면 1편을 돌려주도록 정해 둔다
-        Movie movie = new Movie(550L, "파이트 클럽", "/a.jpg");
+        Movie movie = movie(550L, "파이트 클럽", "/a.jpg");
         given(movieRepository.findByTitleContaining("클럽")).willReturn(List.of(movie));
 
         // when
@@ -104,25 +104,32 @@ class MovieServiceTest {
     }
 
     @Test
-    @DisplayName("TMDB 영화를 가져올 때 이미 저장된 영화는 건너뛰고 새 영화만 저장한다")
-    void importPopularMovies_skipsDuplicates() {
-        // given: TMDB가 3편을 주고, 그중 2번(tmdbId=2)은 이미 DB에 있다
+    @DisplayName("TMDB 영화를 가져올 때 새 영화는 저장하고, 이미 있는 영화는 정보를 갱신한다")
+    void importPopularMovies_savesNewAndUpdatesExisting() {
+        // given: TMDB가 3편을 주고, 그중 2번(tmdbId=2)은 예전 정보로 이미 DB에 있다
         given(tmdbClient.fetchPopularMovies()).willReturn(List.of(
                 tmdbMovie(1L, "영화1"),
                 tmdbMovie(2L, "영화2"),
                 tmdbMovie(3L, "영화3")
         ));
-        given(movieRepository.existsByTmdbId(1L)).willReturn(false);
-        given(movieRepository.existsByTmdbId(2L)).willReturn(true);
-        given(movieRepository.existsByTmdbId(3L)).willReturn(false);
+        Movie oldMovie2 = movie(2L, "옛날 제목", "/old.jpg");
+        given(movieRepository.findByTmdbId(1L)).willReturn(Optional.empty());
+        given(movieRepository.findByTmdbId(2L)).willReturn(Optional.of(oldMovie2));
+        given(movieRepository.findByTmdbId(3L)).willReturn(Optional.empty());
 
         // when
         ImportResponse response = movieService.importPopularMovies();
 
-        // then: 3편을 가져와서 2편만 저장했다
+        // then: 3편 중 2편은 새로 저장, 1편은 갱신
         assertThat(response.fetchedCount()).isEqualTo(3);
         assertThat(response.savedCount()).isEqualTo(2);
+        assertThat(response.updatedCount()).isEqualTo(1);
         then(movieRepository).should(times(2)).save(any(Movie.class));
+
+        // 이미 있던 영화는 save 없이 객체의 값만 최신으로 바뀌어 있어야 한다 (변경 감지 대상)
+        assertThat(oldMovie2.getTitle()).isEqualTo("영화2");
+        assertThat(oldMovie2.getGenres()).isEqualTo("드라마,로맨스");
+        assertThat(oldMovie2.getVoteAverage()).isEqualTo(7.5);
     }
 
     @Test
@@ -140,12 +147,21 @@ class MovieServiceTest {
         then(movieRepository).should(never()).save(any(Movie.class));
     }
 
-    // 테스트용 TmdbMovie를 간단히 만드는 도우미 메서드
+    // 테스트용 Movie를 간단히 만드는 도우미 메서드 (상세 정보는 비워 둔다)
+    private Movie movie(Long tmdbId, String title, String posterPath) {
+        return new Movie(tmdbId, title, posterPath, null, null, null, null);
+    }
+
+    // 테스트용 TmdbMovie를 간단히 만드는 도우미 메서드 (장르: 18=드라마, 10749=로맨스)
     private TmdbMovie tmdbMovie(Long id, String title) {
         TmdbMovie movie = new TmdbMovie();
         movie.setId(id);
         movie.setTitle(title);
         movie.setPoster_path("/" + id + ".jpg");
+        movie.setOverview(title + " 줄거리");
+        movie.setRelease_date("2026-01-01");
+        movie.setVote_average(7.5);
+        movie.setGenre_ids(List.of(18, 10749));
         return movie;
     }
 }
