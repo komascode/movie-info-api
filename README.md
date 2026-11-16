@@ -68,6 +68,7 @@ push (main)
 | `SG_ID` | EC2 보안 그룹 ID (`sg-...`) |
 | `EC2_HOST`, `EC2_USER` | EC2 공인 IP, 접속 사용자 (`ubuntu`) |
 | `EC2_SSH_KEY` | EC2 키 페어 `.pem` 파일 내용 |
+| `GEMINI_API_KEY` | Gemini API 키. 배포할 때 서버의 `.env`에 자동으로 반영 |
 
 ## 트러블슈팅
 
