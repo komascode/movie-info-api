@@ -4,7 +4,7 @@ TMDB(The Movie Database)에서 인기 영화 정보를 가져와 저장하고, �
 
 컴퓨터공학과 학술 동아리 MAP의 방학 커리큘럼에서 부원들이 따라 만들 예제로 처음 제작했고, 이후 기능 보강과 AWS 배포까지 확장했습니다.
 
-- 현재 AWS EC2 서버는 비용 관리를 위해 중지해 둔 상태입니다. 로컬에서는 아래 [Docker로 실행](#docker로-실행-앱--mysql) 방법으로 띄운 뒤 `/swagger-ui/index.html`에서 API를 확인할 수 있습니다
+- API 문서 (Swagger): http://13.209.73.123:8080/swagger-ui/index.html
 
 ## 기술 스택
 
