@@ -14,6 +14,7 @@ TMDB(The Movie Database)에서 인기 영화 정보를 가져와 저장하고, �
 | Framework | Spring Boot 4.1, Spring Data JPA |
 | Database | MySQL |
 | 외부 API | TMDB API (RestClient) |
+| AI | Spring AI, Google Gemini (gemini-3.5-flash-lite) |
 | 문서화 | Swagger (springdoc-openapi) |
 | 배포 | AWS EC2 (Ubuntu), Docker, Docker Compose |
 | CI/CD | GitHub Actions, GitHub Container Registry |
@@ -67,6 +68,7 @@ push (main)
 | `SG_ID` | EC2 보안 그룹 ID (`sg-...`) |
 | `EC2_HOST`, `EC2_USER` | EC2 공인 IP, 접속 사용자 (`ubuntu`) |
 | `EC2_SSH_KEY` | EC2 키 페어 `.pem` 파일 내용 |
+| `GEMINI_API_KEY` | Gemini API 키. 배포할 때 서버의 `.env`에 자동으로 반영 |
 
 ## 트러블슈팅
 
@@ -92,10 +94,11 @@ Controller ─▶ Service ─▶ Repository ─▶ MySQL
 
 | Method | Endpoint | 설명 |
 |---|---|---|
-| POST | `/tmdb/save` | TMDB 인기 영화를 가져와 저장. 이미 저장된 영화(TMDB ID 기준)는 건너뜀 |
+| POST | `/tmdb/save` | TMDB 인기 영화를 가져와 저장. 이미 저장된 영화(TMDB ID 기준)는 최신 정보로 갱신 |
 | GET | `/movies` | 저장된 영화 목록 조회 |
 | GET | `/movies?title={검색어}` | 제목에 검색어가 들어간 영화 조회 |
 | GET | `/movies/{id}` | 영화 상세 조회. 없으면 404 |
+| POST | `/recommend` | 자연어로 원하는 영화를 말하면 AI가 저장된 영화 중에서 추천. IP당 하루 20회 |
 
 서버 실행 후 `/swagger-ui/index.html`에서 API를 직접 호출해 볼 수 있습니다.
 
@@ -104,15 +107,46 @@ Controller ─▶ Service ─▶ Repository ─▶ MySQL
 `POST /tmdb/save`
 
 ```json
-{ "fetchedCount": 20, "savedCount": 20 }
+{ "fetchedCount": 20, "savedCount": 20, "updatedCount": 0 }
 ```
 
-같은 요청을 다시 보내면 이미 저장된 영화는 건너뛰어 `savedCount`가 0이 됩니다.
+같은 요청을 다시 보내면 이미 저장된 영화는 새로 저장하지 않고 정보만 갱신해 `savedCount` 0, `updatedCount` 20이 됩니다.
 
 `GET /movies/{id}` (없는 id)
 
 ```json
 { "status": 404, "message": "영화를 찾을 수 없습니다. id=999999" }
+```
+
+## AI 영화 추천
+
+```
+POST /recommend  { "message": "비 오는 날 혼자 보기 좋은 잔잔한 영화 추천해 줘" }
+   │
+   ├─ 사용량 확인 : IP당 하루 20회 초과 시 429
+   │
+   ├─ Gemini 호출 : 시스템 프롬프트 + searchMovies 도구 정보 전달
+   │     └─ Gemini가 "searchMovies(genre=드라마)" 호출을 요청
+   │           └─ 서버가 DB를 조회해 결과를 Gemini에 돌려줌 (Function Calling)
+   │
+   └─ 응답 + 실행 로그 (응답 시간, 입력·출력 토큰 수)
+```
+
+- **Function Calling**: LLM은 도구 호출을 요청만 하고, 실제 DB 조회는 서버의 `MovieSearchTools`가 수행합니다. 추천은 도구 결과 안에서만 하도록 해 없는 영화를 지어내지 않게 했습니다
+- **비용 관리**: 호출마다 토큰 비용이 들기 때문에 IP당 하루 호출 수와 입력 길이(300자)를 제한하고, 도구 결과의 줄거리는 150자로 잘라 토큰을 줄였습니다
+- **응답 지연**: 같은 요청을 측정해 보니 `gemini-3.5-flash`는 30~40초, `gemini-3.5-flash-lite`(생각 수준 최소)는 약 4초였습니다. 영화 추천은 깊은 추론이 필요 없어 가벼운 모델을 선택했습니다
+- **모델 교체**: Spring AI의 `ChatClient`를 사용해, 서비스 코드 수정 없이 설정만으로 다른 모델로 바꿀 수 있습니다
+
+응답 예시
+
+```json
+{
+  "answer": "평점 높은 액션 영화로 <고스트 솔저>를 추천합니다. ...",
+  "latencyMs": 4296,
+  "promptTokens": 1067,
+  "completionTokens": 96,
+  "remainingToday": 19
+}
 ```
 
 ## 실행 방법
@@ -132,6 +166,7 @@ DB_URL=jdbc:mysql://localhost:3306/movie
 DB_USERNAME=root
 DB_PASSWORD=your_password
 TMDB_API_KEY=your_tmdb_api_key
+GEMINI_API_KEY=your_gemini_api_key
 ```
 
 배포 환경에서는 `.env` 파일 대신 같은 이름의 환경변수로 주입할 수 있습니다.
