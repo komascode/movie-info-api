@@ -14,7 +14,7 @@ TMDB(The Movie Database)에서 인기 영화 정보를 가져와 저장하고, �
 | Framework | Spring Boot 4.1, Spring Data JPA |
 | Database | MySQL |
 | 외부 API | TMDB API (RestClient) |
-| AI | Spring AI, Google Gemini (gemini-3.5-flash-lite) |
+| AI | 솔트룩스 LUXIA Cloud (luxia3), Spring AI + Google Gemini (gemini-3.5-flash-lite) |
 | 문서화 | Swagger (springdoc-openapi) |
 | 배포 | AWS EC2 (Ubuntu), Docker, Docker Compose |
 | CI/CD | GitHub Actions, GitHub Container Registry |
@@ -68,7 +68,7 @@ push (main)
 | `SG_ID` | EC2 보안 그룹 ID (`sg-...`) |
 | `EC2_HOST`, `EC2_USER` | EC2 공인 IP, 접속 사용자 (`ubuntu`) |
 | `EC2_SSH_KEY` | EC2 키 페어 `.pem` 파일 내용 |
-| `GEMINI_API_KEY` | Gemini API 키. 배포할 때 서버의 `.env`에 자동으로 반영 |
+| `GEMINI_API_KEY`, `LUXIA_API_KEY` | Gemini, LUXIA Cloud API 키. 배포할 때 서버의 `.env`에 자동으로 반영 |
 
 ## 트러블슈팅
 
@@ -120,31 +120,46 @@ Controller ─▶ Service ─▶ Repository ─▶ MySQL
 
 ## AI 영화 추천
 
+`POST /recommend`에 원하는 영화를 자연어로 보내면, 저장된 영화 중에서 골라 이유와 함께 추천합니다. 추천에 쓸 모델은 `AI_PROVIDER` 설정으로 바꿀 수 있습니다.
+
+| `AI_PROVIDER` | 모델 | 방식 |
+|---|---|---|
+| `luxia` (기본) | 솔트룩스 LUXIA Cloud `luxia3-llm-8b-0731` | 서버가 DB에서 후보를 먼저 조회해 질문과 함께 전달하고, LLM은 그 안에서 고름 |
+| `gemini` | Google `gemini-3.5-flash-lite` (Spring AI) | LLM이 `searchMovies` 도구를 직접 호출해 후보를 찾음 (Function Calling) |
+
 ```
-POST /recommend  { "message": "비 오는 날 혼자 보기 좋은 잔잔한 영화 추천해 줘" }
+POST /recommend  { "message": "평점 높은 액션 영화 하나만" }
    │
-   ├─ 사용량 확인 : IP당 하루 20회 초과 시 429
+   ├─ RecommendService : 사용량 확인(IP당 하루 20회, 초과 시 429) → 추천 → 실행 로그
    │
-   ├─ Gemini 호출 : 시스템 프롬프트 + searchMovies 도구 정보 전달
-   │     └─ Gemini가 "searchMovies(genre=드라마)" 호출을 요청
-   │           └─ 서버가 DB를 조회해 결과를 Gemini에 돌려줌 (Function Calling)
-   │
-   └─ 응답 + 실행 로그 (응답 시간, 입력·출력 토큰 수)
+   └─ MovieRecommender (설정에 따라 하나가 주입됨)
+        ├─ LuxiaRecommender  : DB 후보 조회 → [후보 영화 + 사용자 요청]을 LUXIA에 전달
+        └─ GeminiRecommender : Gemini가 searchMovies(genre=액션, minRating=8.0) 호출을 요청
+                                → 서버가 DB 조회 결과를 돌려줌
 ```
 
-- **Function Calling**: LLM은 도구 호출을 요청만 하고, 실제 DB 조회는 서버의 `MovieSearchTools`가 수행합니다. 추천은 도구 결과 안에서만 하도록 해 없는 영화를 지어내지 않게 했습니다
-- **비용 관리**: 호출마다 토큰 비용이 들기 때문에 IP당 하루 호출 수와 입력 길이(300자)를 제한하고, 도구 결과의 줄거리는 150자로 잘라 토큰을 줄였습니다
-- **응답 지연**: 같은 요청을 측정해 보니 `gemini-3.5-flash`는 30~40초, `gemini-3.5-flash-lite`(생각 수준 최소)는 약 4초였습니다. 영화 추천은 깊은 추론이 필요 없어 가벼운 모델을 선택했습니다
-- **모델 교체**: Spring AI의 `ChatClient`를 사용해, 서비스 코드 수정 없이 설정만으로 다른 모델로 바꿀 수 있습니다
+- **모델 교체 구조**: 추천 역할을 `MovieRecommender` 인터페이스로 분리하고, `@ConditionalOnProperty`로 설정에 맞는 구현체만 빈으로 등록했습니다. 서비스 코드 수정 없이 설정 한 줄로 모델을 바꿀 수 있습니다
+- **LUXIA 연동**: Spring AI에 LUXIA 모듈이 없어 `RestClient`로 Chat API를 직접 호출했습니다. LUXIA Chat API는 도구 호출을 지원하지 않아(`tools`를 보내면 500), 서버가 후보를 먼저 넘기는 방식으로 처리했습니다
+- **환각 방지**: 두 방식 모두 DB에 있는 영화 안에서만 추천하도록 해, 없는 영화를 지어내지 않게 했습니다
+- **비용 관리**: IP당 하루 호출 수와 입력 길이(300자)를 제한하고, LLM에 넘기는 줄거리는 150자로 잘라 토큰을 줄였습니다. 한도를 넘은 요청은 LLM을 호출하지 않습니다
+
+### 모델별 측정 결과 (같은 요청 기준)
+
+| 모델 | 응답 시간 | 비고 |
+|---|---|---|
+| gemini-3.5-flash | 30~40초 | 생각 수준을 낮춰도 큰 차이 없음 |
+| gemini-3.5-flash-lite | 4~7초 | "평점 높은 액션"에 평점 8.4 영화를 고름 |
+| **luxia3 (LUXIA Cloud)** | **1~2초** | 후보 중 평점 1위(9.05)를 정확히 고름. 요청당 약 2,600토큰, 약 0.0002달러 |
 
 응답 예시
 
 ```json
 {
-  "answer": "평점 높은 액션 영화로 <고스트 솔저>를 추천합니다. ...",
-  "latencyMs": 4296,
-  "promptTokens": 1067,
-  "completionTokens": 96,
+  "answer": "추천 영화: 고스트 솔저 ... 평점이 9.048로 후보 영화 중 가장 높으며 ...",
+  "model": "luxia3-llm-32b-v1.0-Q",
+  "latencyMs": 947,
+  "promptTokens": 2590,
+  "completionTokens": 61,
   "remainingToday": 19
 }
 ```
