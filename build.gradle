@@ -17,7 +17,19 @@ repositories {
 	mavenCentral()
 }
 
+ext {
+	set('springAiVersion', '2.0.2')
+}
+
+dependencyManagement {
+	imports {
+		// Spring AI 관련 라이브러리들의 버전을 한 번에 맞춰 주는 목록(BOM)
+		mavenBom "org.springframework.ai:spring-ai-bom:${springAiVersion}"
+	}
+}
+
 dependencies {
+	implementation 'org.springframework.ai:spring-ai-starter-model-google-genai'
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.1'

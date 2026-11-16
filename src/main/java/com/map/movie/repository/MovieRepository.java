@@ -11,4 +11,7 @@ public interface MovieRepository extends JpaRepository<Movie, Long> {
     Optional<Movie> findByTmdbId(Long tmdbId);
 
     List<Movie> findByTitleContaining(String title);
+
+    // genres 칸("드라마,로맨스")에 해당 장르 이름이 들어간 영화
+    List<Movie> findByGenresContaining(String genre);
 }

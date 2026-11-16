@@ -35,6 +35,7 @@ jobs:
       DB_USERNAME: root
       DB_PASSWORD: test
       TMDB_API_KEY: dummy
+      GEMINI_API_KEY: dummy
 
     steps:
       - uses: actions/checkout@v5
