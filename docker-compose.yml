@@ -30,6 +30,8 @@ services:
       TMDB_API_KEY: ${TMDB_API_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       AI_PROVIDER: ${AI_PROVIDER:-luxia}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      AI_DAILY_LIMIT: ${AI_DAILY_LIMIT:-20}
       LUXIA_API_KEY: ${LUXIA_API_KEY:-}
     depends_on:
       db:

@@ -1,5 +1,6 @@
 package com.map.movie.ai.luxia;
 
+import com.map.movie.ai.CandidatePrompt;
 import com.map.movie.ai.MovieRecommender;
 import com.map.movie.ai.MovieSearchTools;
 import com.map.movie.ai.MovieSearchTools.MovieSummary;
@@ -8,7 +9,6 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 /**
  * LUXIA로 추천한다.
@@ -20,13 +20,7 @@ import java.util.stream.Collectors;
 @ConditionalOnProperty(name = "ai.provider", havingValue = "luxia")
 public class LuxiaRecommender implements MovieRecommender {
 
-    static final String SYSTEM_PROMPT = """
-            너는 영화 추천 도우미다.
-            - 반드시 [후보 영화] 목록 안에서만 추천한다. 목록에 없는 영화는 절대 지어내지 않는다.
-            - 사용자의 요청에 맞는 영화를 1~3편 고르고, 각 영화마다 왜 요청에 맞는지 한두 문장으로 설명한다.
-            - 맞는 영화가 없으면 없다고 솔직하게 말하고 가장 가까운 영화를 안내한다.
-            - 한국어로 답한다.
-            """;
+    static final String SYSTEM_PROMPT = CandidatePrompt.SYSTEM_PROMPT;
 
     private final LuxiaClient luxiaClient;
     private final MovieSearchTools movieSearchTools;
@@ -37,7 +31,7 @@ public class LuxiaRecommender implements MovieRecommender {
         List<MovieSummary> candidates = movieSearchTools.searchMovies(null, null);
 
         // 2) 후보 목록을 질문과 함께 넘긴다
-        String userMessage = "[후보 영화]\n" + toLines(candidates) + "\n\n[사용자 요청]\n" + message;
+        String userMessage = CandidatePrompt.userMessage(candidates, message);
         LuxiaClient.ChatResponse response = luxiaClient.chat(SYSTEM_PROMPT, userMessage);
 
         LuxiaClient.Usage usage = response.usage();
@@ -46,12 +40,5 @@ public class LuxiaRecommender implements MovieRecommender {
                 response.model(),
                 usage == null ? null : usage.prompt_tokens(),
                 usage == null ? null : usage.completion_tokens());
-    }
-
-    private static String toLines(List<MovieSummary> movies) {
-        return movies.stream()
-                .map(m -> "- %s | 장르: %s | 평점: %s | 개봉: %s | 줄거리: %s"
-                        .formatted(m.title(), m.genres(), m.voteAverage(), m.releaseDate(), m.overview()))
-                .collect(Collectors.joining("\n"));
     }
 }
