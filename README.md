@@ -41,7 +41,7 @@ POST /recommend  { "message": "평점 높은 액션 영화 하나만" }
    ├─ 사용량 확인 (IP당 하루 20회, 초과 시 429)
    │
    └─ MovieRecommender (설정에 따라 하나가 주입됨)
-        ├─ LUXIA  : 서버가 DB에서 후보 영화를 조회해 요청과 함께 전달 → LLM은 그 안에서 선택
+        ├─ LUXIA  : 질문에서 장르·평점 조건을 뽑아 DB에서 후보를 검색해 요청과 함께 전달 (RAG) → LLM은 그 안에서 선택
         └─ Gemini : LLM이 searchMovies 도구를 호출해 DB에서 후보 조회 (Function Calling)
 ```
 

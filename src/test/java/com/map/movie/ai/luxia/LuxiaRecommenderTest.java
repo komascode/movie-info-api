@@ -1,7 +1,7 @@
 package com.map.movie.ai.luxia;
 
 import com.map.movie.ai.MovieRecommender.RecommendResult;
-import com.map.movie.ai.MovieSearchTools;
+import com.map.movie.ai.CandidateRetriever;
 import com.map.movie.ai.MovieSearchTools.MovieSummary;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,16 +26,16 @@ class LuxiaRecommenderTest {
     private LuxiaClient luxiaClient;
 
     @Mock
-    private MovieSearchTools movieSearchTools;
+    private CandidateRetriever candidateRetriever;
 
     @InjectMocks
     private LuxiaRecommender luxiaRecommender;
 
     @Test
-    @DisplayName("DB에서 조회한 후보 영화를 사용자 요청과 함께 LUXIA에 넘기고, 응답을 결과로 바꾼다")
+    @DisplayName("질문으로 검색한 후보 영화를 사용자 요청과 함께 LUXIA에 넘기고, 응답을 결과로 바꾼다")
     void sendsCandidatesWithUserMessage() {
         // given: DB 후보 2편, LUXIA는 정해진 답을 준다
-        given(movieSearchTools.searchMovies(null, null)).willReturn(List.of(
+        given(candidateRetriever.retrieve("가족이랑 볼 영화")).willReturn(List.of(
                 new MovieSummary(1L, "코코", "애니메이션,가족", "2017-10-27", 8.2, "음악을 사랑하는 소년"),
                 new MovieSummary(2L, "블랙 볼", "드라마,전쟁", "2026-01-01", 8.0, "세 남성의 삶")
         ));
