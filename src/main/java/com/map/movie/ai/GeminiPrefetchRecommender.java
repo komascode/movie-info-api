@@ -18,19 +18,19 @@ import java.util.List;
 public class GeminiPrefetchRecommender implements MovieRecommender {
 
     private final ChatClient chatClient;
-    private final MovieSearchTools movieSearchTools;
+    private final CandidateRetriever candidateRetriever;
 
-    public GeminiPrefetchRecommender(ChatClient.Builder chatClientBuilder, MovieSearchTools movieSearchTools) {
+    public GeminiPrefetchRecommender(ChatClient.Builder chatClientBuilder, CandidateRetriever candidateRetriever) {
         // 도구를 등록하지 않는다: LLM과의 왕복은 1번뿐
         this.chatClient = chatClientBuilder
                 .defaultSystem(CandidatePrompt.SYSTEM_PROMPT)
                 .build();
-        this.movieSearchTools = movieSearchTools;
+        this.candidateRetriever = candidateRetriever;
     }
 
     @Override
     public RecommendResult recommend(String message) {
-        List<MovieSummary> candidates = movieSearchTools.searchMovies(null, null);
+        List<MovieSummary> candidates = candidateRetriever.retrieve(message);
 
         ChatResponse response = chatClient.prompt()
                 .user(CandidatePrompt.userMessage(candidates, message))

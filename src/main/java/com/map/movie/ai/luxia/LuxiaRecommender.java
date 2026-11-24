@@ -1,8 +1,8 @@
 package com.map.movie.ai.luxia;
 
 import com.map.movie.ai.CandidatePrompt;
+import com.map.movie.ai.CandidateRetriever;
 import com.map.movie.ai.MovieRecommender;
-import com.map.movie.ai.MovieSearchTools;
 import com.map.movie.ai.MovieSearchTools.MovieSummary;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -23,12 +23,12 @@ public class LuxiaRecommender implements MovieRecommender {
     static final String SYSTEM_PROMPT = CandidatePrompt.SYSTEM_PROMPT;
 
     private final LuxiaClient luxiaClient;
-    private final MovieSearchTools movieSearchTools;
+    private final CandidateRetriever candidateRetriever;
 
     @Override
     public RecommendResult recommend(String message) {
-        // 1) 서버가 후보를 먼저 조회 (평점순 상위, 줄거리는 짧게 잘라 토큰 절약)
-        List<MovieSummary> candidates = movieSearchTools.searchMovies(null, null);
+        // 1) 질문의 장르·평점 조건으로 DB에서 후보를 찾는다 (줄거리는 짧게 잘라 토큰 절약)
+        List<MovieSummary> candidates = candidateRetriever.retrieve(message);
 
         // 2) 후보 목록을 질문과 함께 넘긴다
         String userMessage = CandidatePrompt.userMessage(candidates, message);
